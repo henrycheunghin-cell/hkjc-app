@@ -260,172 +260,188 @@ def fetch_official_racecard(race_no=1):
         except Exception:
             continue
 
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, "html.parser") if html else None
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser") if html else None
+    except Exception:
+        soup = None
     
     runners = []
     seen_nos = set()
     
+    raw_rows = []
     if soup:
         for tr in soup.find_all("tr"):
-            cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"], recursive=False)]
-            if not cells or len(cells) < 8:
-                cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
+            c_list = [td.get_text(strip=True) for td in tr.find_all(["td", "th"], recursive=False)]
+            if not c_list or len(c_list) < 8:
+                c_list = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
+            if c_list:
+                raw_rows.append(c_list)
+    elif html:
+        # 100% 原生純 Python 正則解析，無需 bs4 亦保證絕不報錯
+        tr_matches = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL | re.IGNORECASE)
+        for tr in tr_matches:
+            td_matches = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.DOTALL | re.IGNORECASE)
+            c_list = [re.sub(r'<[^>]+>', '', c).strip() for c in td_matches]
+            if c_list:
+                raw_rows.append(c_list)
                 
-            if cells and cells[0].isdigit():
-                h_no_int = int(cells[0])
-                if 1 <= h_no_int <= 15 and h_no_int not in seen_nos:
-                    if 8 <= len(cells) <= 45:
-                        seen_nos.add(h_no_int)
-                        h_no = h_no_int
-                        form = cells[1] if len(cells) > 1 and cells[1] else "-"
-                        h_name = cells[3] if len(cells) > 3 else ""
-                        brand = cells[4] if len(cells) > 4 else ""
-                        weight = cells[5] if len(cells) > 5 else "125"
-                        jockey = cells[6] if len(cells) > 6 else ""
-                        draw = cells[8] if len(cells) > 8 else "-"
-                        trainer = cells[9] if len(cells) > 9 else ""
-                        rating = cells[11] if len(cells) > 11 and cells[11] else "-"
-                        best_time = cells[15] if len(cells) > 15 and cells[15] else "-"
-                        age_str = (cells[16] + "歲") if len(cells) > 16 and cells[16].isdigit() else "5歲"
-                        gear = cells[22] if len(cells) > 22 and cells[22] else "-"
-                        
-                        for i, c in enumerate(cells):
-                            if re.match(r"^[A-Z]\d{3}$", c):
-                                brand = c
-                                if i > 0 and not h_name: h_name = cells[i-1]
-                                if i + 1 < len(cells) and cells[i+1].isdigit(): weight = cells[i+1]
-                                break
-                                
-                        try: draw_int = int(re.sub(r"\D", "", draw))
-                        except Exception: draw_int = 8
-                        try: wt_int = int(re.sub(r"\D", "", weight))
-                        except Exception: wt_int = 125
-                        try: rtg_int = int(re.sub(r"\D", "", rating))
-                        except Exception: rtg_int = 60
-                        
-                        # 速度基本盤與跑法
-                        if draw_int in [1, 2, 3] and any(cj in jockey for cj in CLAIMING_JOCKEYS):
-                            style = "放頭"
-                            e_sp, l_sp = (95, 76)
-                        elif draw_int <= 4:
-                            style = "前領"
-                            e_sp, l_sp = (89, 84)
-                        elif draw_int <= 7:
-                            style = "均速"
-                            e_sp, l_sp = (84, 86)
-                        elif wt_int >= 130:
-                            style = "跟前"
-                            e_sp, l_sp = (82, 88)
-                        else:
-                            style = "後上"
-                            e_sp, l_sp = (74, 92)
+    for cells in raw_rows:
+            
+        if cells and cells[0].isdigit():
+            h_no_int = int(cells[0])
+            if 1 <= h_no_int <= 15 and h_no_int not in seen_nos:
+                if 8 <= len(cells) <= 45:
+                    seen_nos.add(h_no_int)
+                    h_no = h_no_int
+                    form = cells[1] if len(cells) > 1 and cells[1] else "-"
+                    h_name = cells[3] if len(cells) > 3 else ""
+                    brand = cells[4] if len(cells) > 4 else ""
+                    weight = cells[5] if len(cells) > 5 else "125"
+                    jockey = cells[6] if len(cells) > 6 else ""
+                    draw = cells[8] if len(cells) > 8 else "-"
+                    trainer = cells[9] if len(cells) > 9 else ""
+                    rating = cells[11] if len(cells) > 11 and cells[11] else "-"
+                    best_time = cells[15] if len(cells) > 15 and cells[15] else "-"
+                    age_str = (cells[16] + "歲") if len(cells) > 16 and cells[16].isdigit() else "5歲"
+                    gear = cells[22] if len(cells) > 22 and cells[22] else "-"
+                    
+                    for i, c in enumerate(cells):
+                        if re.match(r"^[A-Z]\d{3}$", c):
+                            brand = c
+                            if i > 0 and not h_name: h_name = cells[i-1]
+                            if i + 1 < len(cells) and cells[i+1].isdigit(): weight = cells[i+1]
+                            break
                             
-                        tot_score = round(e_sp * 0.4 + l_sp * 0.4 + (rtg_int / 100.0) * 20.0)
-                        sec_time = round(23.6 - (l_sp / 100.0) * 1.4, 2)
+                    try: draw_int = int(re.sub(r"\D", "", draw))
+                    except Exception: draw_int = 8
+                    try: wt_int = int(re.sub(r"\D", "", weight))
+                    except Exception: wt_int = 125
+                    try: rtg_int = int(re.sub(r"\D", "", rating))
+                    except Exception: rtg_int = 60
+                    
+                    # 速度基本盤與跑法
+                    if draw_int in [1, 2, 3] and any(cj in jockey for cj in CLAIMING_JOCKEYS):
+                        style = "放頭"
+                        e_sp, l_sp = (95, 76)
+                    elif draw_int <= 4:
+                        style = "前領"
+                        e_sp, l_sp = (89, 84)
+                    elif draw_int <= 7:
+                        style = "均速"
+                        e_sp, l_sp = (84, 86)
+                    elif wt_int >= 130:
+                        style = "跟前"
+                        e_sp, l_sp = (82, 88)
+                    else:
+                        style = "後上"
+                        e_sp, l_sp = (74, 92)
                         
-                        # 第2項：賽前試閘與對上賽事試閘 (簡單清晰顯示)
-                        if h_no in [1, 3, 6] or "拔閘" in form or rtg_int >= 75:
-                            curr_trial = "有 (拔閘)"
-                        elif h_no in [2, 4, 9] or "拍跳" in form:
-                            curr_trial = "有 (拍跳)"
-                        else:
-                            curr_trial = "無"
-                            
-                        if h_no in [1, 2, 6, 7] or rtg_int >= 70:
-                            prev_trial = "有"
-                        else:
-                            prev_trial = "無"
-                            
-                        # 開飛基準與現時盤口計算
-                        open_win = OPENING_OVERNIGHT_ODDS.get(race_no, {}).get(h_no, 10.0)
-                        if h_no in [6, 1] and race_no == 1:
-                            curr_win = round(open_win * 0.85, 1) # 綠燈急落
-                        elif h_no in [8, 12]:
-                            curr_win = round(open_win * 1.15, 1) # 回飛走資
-                        else:
-                            curr_win = open_win
-                            
-                        curr_pla = round(max(1.1, curr_win * 0.32), 1)
-                        drop_pct = round(((open_win - curr_win) / open_win) * 100.0, 1)
+                    tot_score = round(e_sp * 0.4 + l_sp * 0.4 + (rtg_int / 100.0) * 20.0)
+                    sec_time = round(23.6 - (l_sp / 100.0) * 1.4, 2)
+                    
+                    # 第2項：賽前試閘與對上賽事試閘 (簡單清晰顯示)
+                    if h_no in [1, 3, 6] or "拔閘" in form or rtg_int >= 75:
+                        curr_trial = "有 (拔閘)"
+                    elif h_no in [2, 4, 9] or "拍跳" in form:
+                        curr_trial = "有 (拍跳)"
+                    else:
+                        curr_trial = "無"
                         
-                        if drop_pct >= 25.0: sig = "🔴 啡燈暴跌"
-                        elif drop_pct >= 12.0: sig = "🟢 綠燈急落"
-                        elif drop_pct <= -10.0: sig = "⚠️ 回飛走資"
-                        else: sig = "⚪ 水位平穩"
+                    if h_no in [1, 2, 6, 7] or rtg_int >= 70:
+                        prev_trial = "有"
+                    else:
+                        prev_trial = "無"
                         
-                        c_w = 1 if rtg_int >= 70 or (h_no in [1, 3, 6]) else 0
-                        c_s = 1 if draw_int in [1, 2, 3] else 0
-                        c_t = 1 if any(tj in jockey for tj in TOP_JOCKEYS) else 0
-                        c_u = max(1, 6 - (c_w + c_s + c_t))
-                        dist_stat_str = calc_rate_str(c_w, c_s, c_t, c_u)
+                    # 開飛基準與現時盤口計算
+                    open_win = OPENING_OVERNIGHT_ODDS.get(race_no, {}).get(h_no, 10.0)
+                    if h_no in [6, 1] and race_no == 1:
+                        curr_win = round(open_win * 0.85, 1) # 綠燈急落
+                    elif h_no in [8, 12]:
+                        curr_win = round(open_win * 1.15, 1) # 回飛走資
+                    else:
+                        curr_win = open_win
                         
-                        d_w, d_s, d_t, d_u = DRAW_STATS_MAP.get(draw_int, (6, 5, 5, 50))
-                        draw_stat_str = calc_rate_str(d_w, d_s, d_t, d_u)
-                        jt_stat_str = get_jt_combo_stat(jockey, trainer)
-                        
-                        # 第3項：統一 7 大維度權重計算 (歸一化 0~100)
-                        # 1. 速度戰力 (25%) - 初出新馬給予試閘換算先驗 (80-84分)，避免零賽績被判0分
-                        is_debut = (form == "-" or not any(c.isdigit() for c in form))
-                        if is_debut:
-                            s1 = 82 if ("拔閘" in curr_trial or "拍跳" in curr_trial) else 76
-                            s4 = 80 if ("拔閘" in curr_trial or "拍跳" in curr_trial) else 70
-                        else:
-                            s1 = tot_score
-                            s4 = 85 if c_w >= 1 else (75 if c_s >= 1 else 60)
-                        
-                        # 2. 騎練組合 (20%)
-                        s2 = 88 if ("潘頓" in jockey or "何澤堯" in jockey) else 65
-                        # 3. 檔位跑道 (15%)
-                        s3 = 90 if draw_int <= 3 else (78 if draw_int <= 7 else 60)
-                        # 5. 試閘狀態 (10%)
-                        s5 = 90 if "拔閘" in curr_trial else (80 if "拍跳" in curr_trial else 60)
-                        # 6. 負磅優勢 (10%)
-                        s6 = 90 if wt_int <= 118 else (80 if wt_int <= 126 else 65)
-                        # 7. 盤口落飛 (5%)
-                        s7 = 95 if drop_pct >= 12 else (70 if drop_pct >= 0 else 55)
-                        
-                        base_score = s1 * 0.25 + s2 * 0.20 + s3 * 0.15 + s4 * 0.15 + s5 * 0.10 + s6 * 0.10 + s7 * 0.05
-                        
-                        # ⚡ 變數激發模組計算 (質新初出、檔位大幅反彈、關鍵初戴眼罩配備)
-                        cat_label, cat_bonus = evaluate_catalyst(h_name, form, draw_int, gear, curr_trial, jockey, trainer, wt_int)
-                        unified_ai_score = round(base_score + cat_bonus, 1)
-                        
-                        runners.append({
-                            "馬號": h_no,
-                            "檔位": draw,
-                            "馬名": h_name,
-                            "烙號": brand,
-                            "馬齡": age_str,
-                            "負磅": f"{weight}磅",
-                            "騎師": jockey,
-                            "練馬師": trainer,
-                            "評分": rating,
-                            "跑法": style,
-                            "速度戰力": f"{tot_score}分",
-                            "前速": e_sp,
-                            "末段": l_sp,
-                            "同程最佳末段": f"{sec_time:.2f}秒",
-                            "今仗試閘": curr_trial,
-                            "上仗試閘": prev_trial,
-                            "AI統一精算分": f"{unified_ai_score}分",
-                            "⚡變數激發": cat_label,
-                            "_cat_bonus": cat_bonus,
-                            "騎練組合 (上名率)": jt_stat_str,
-                            "檔位跑道 (上名率)": draw_stat_str,
-                            "同程賽績 (上名率)": dist_stat_str,
-                            "6次近績": form,
-                            "配備": gear,
-                            "最佳時間": best_time,
-                            "東方短評": "未有",
-                            "一開飛WIN": f"{open_win:.1f}",
-                            "當前即時WIN": f"{curr_win:.1f}",
-                            "當前即時位置": f"{curr_pla:.1f}",
-                            "落飛跌幅%": f"{drop_pct:+.1f}%",
-                            "大戶落飛信號": sig,
-                            "_ai_num": unified_ai_score,
-                            "_drop_num": drop_pct
-                        })
+                    curr_pla = round(max(1.1, curr_win * 0.32), 1)
+                    drop_pct = round(((open_win - curr_win) / open_win) * 100.0, 1)
+                    
+                    if drop_pct >= 25.0: sig = "🔴 啡燈暴跌"
+                    elif drop_pct >= 12.0: sig = "🟢 綠燈急落"
+                    elif drop_pct <= -10.0: sig = "⚠️ 回飛走資"
+                    else: sig = "⚪ 水位平穩"
+                    
+                    c_w = 1 if rtg_int >= 70 or (h_no in [1, 3, 6]) else 0
+                    c_s = 1 if draw_int in [1, 2, 3] else 0
+                    c_t = 1 if any(tj in jockey for tj in TOP_JOCKEYS) else 0
+                    c_u = max(1, 6 - (c_w + c_s + c_t))
+                    dist_stat_str = calc_rate_str(c_w, c_s, c_t, c_u)
+                    
+                    d_w, d_s, d_t, d_u = DRAW_STATS_MAP.get(draw_int, (6, 5, 5, 50))
+                    draw_stat_str = calc_rate_str(d_w, d_s, d_t, d_u)
+                    jt_stat_str = get_jt_combo_stat(jockey, trainer)
+                    
+                    # 第3項：統一 7 大維度權重計算 (歸一化 0~100)
+                    # 1. 速度戰力 (25%) - 初出新馬給予試閘換算先驗 (80-84分)，避免零賽績被判0分
+                    is_debut = (form == "-" or not any(c.isdigit() for c in form))
+                    if is_debut:
+                        s1 = 82 if ("拔閘" in curr_trial or "拍跳" in curr_trial) else 76
+                        s4 = 80 if ("拔閘" in curr_trial or "拍跳" in curr_trial) else 70
+                    else:
+                        s1 = tot_score
+                        s4 = 85 if c_w >= 1 else (75 if c_s >= 1 else 60)
+                    
+                    # 2. 騎練組合 (20%)
+                    s2 = 88 if ("潘頓" in jockey or "何澤堯" in jockey) else 65
+                    # 3. 檔位跑道 (15%)
+                    s3 = 90 if draw_int <= 3 else (78 if draw_int <= 7 else 60)
+                    # 5. 試閘狀態 (10%)
+                    s5 = 90 if "拔閘" in curr_trial else (80 if "拍跳" in curr_trial else 60)
+                    # 6. 負磅優勢 (10%)
+                    s6 = 90 if wt_int <= 118 else (80 if wt_int <= 126 else 65)
+                    # 7. 盤口落飛 (5%)
+                    s7 = 95 if drop_pct >= 12 else (70 if drop_pct >= 0 else 55)
+                    
+                    base_score = s1 * 0.25 + s2 * 0.20 + s3 * 0.15 + s4 * 0.15 + s5 * 0.10 + s6 * 0.10 + s7 * 0.05
+                    
+                    # ⚡ 變數激發模組計算 (質新初出、檔位大幅反彈、關鍵初戴眼罩配備)
+                    cat_label, cat_bonus = evaluate_catalyst(h_name, form, draw_int, gear, curr_trial, jockey, trainer, wt_int)
+                    unified_ai_score = round(base_score + cat_bonus, 1)
+                    
+                    runners.append({
+                        "馬號": h_no,
+                        "檔位": draw,
+                        "馬名": h_name,
+                        "烙號": brand,
+                        "馬齡": age_str,
+                        "負磅": f"{weight}磅",
+                        "騎師": jockey,
+                        "練馬師": trainer,
+                        "評分": rating,
+                        "跑法": style,
+                        "速度戰力": f"{tot_score}分",
+                        "前速": e_sp,
+                        "末段": l_sp,
+                        "同程最佳末段": f"{sec_time:.2f}秒",
+                        "今仗試閘": curr_trial,
+                        "上仗試閘": prev_trial,
+                        "AI統一精算分": f"{unified_ai_score}分",
+                        "⚡變數激發": cat_label,
+                        "_cat_bonus": cat_bonus,
+                        "騎練組合 (上名率)": jt_stat_str,
+                        "檔位跑道 (上名率)": draw_stat_str,
+                        "同程賽績 (上名率)": dist_stat_str,
+                        "6次近績": form,
+                        "配備": gear,
+                        "最佳時間": best_time,
+                        "東方短評": "未有",
+                        "一開飛WIN": f"{open_win:.1f}",
+                        "當前即時WIN": f"{curr_win:.1f}",
+                        "當前即時位置": f"{curr_pla:.1f}",
+                        "落飛跌幅%": f"{drop_pct:+.1f}%",
+                        "大戶落飛信號": sig,
+                        "_ai_num": unified_ai_score,
+                        "_drop_num": drop_pct
+                    })
 
     if not runners:
         return None, "馬會伺服器排位連線逾時，請點擊上方重新連線同步。"
